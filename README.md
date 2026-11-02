@@ -42,10 +42,3 @@ Projekt posiada w pełni zautomatyzowany rurociąg CI/CD skonfigurowany w GitHub
 ### Wymagania
 * Zainstalowany Docker i Docker Compose.
 * Wolne porty: `80` (Nginx/App), `8081` (Zitadel UI), `8080`, `5432`, `6379`.
-
-### Kroki instalacji
-
-1. Sklonuj repozytorium:
-   ```bash
-   git clone [https://github.com/TwojUsername/TaskManager.git](https://github.com/TwojUsername/TaskManager.git)
-   cd TaskManager
