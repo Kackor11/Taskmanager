@@ -1,0 +1,168 @@
+services:
+  # ==========================================
+  # 1. Nginx Reverse Proxy (Bramka wejściowa)
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - web_net
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  # ==========================================
+  # 2. Frontend (React SPA)
+  # ==========================================
+  frontend:
+    build: ./frontend
+    image: taskmanager-frontend:v1.0
+    networks:
+      - web_net
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:80" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ==========================================
+  # 3. Backend
+  # ==========================================
+  backend:
+    build: .
+    image: taskmanager-backend:v1.0
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=cache
+      - ZITADEL_HOST=zitadel
+    secrets:
+      - db_password
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - web_net
+      - internal_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+
+  # ==========================================
+  # 4. Baza Danych (PostgreSQL)
+  # ==========================================
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=taskdb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 5. Cache (Redis)
+  # ==========================================
+  cache:
+    image: redis:alpine
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 6. Serwer Autoryzacji (Zitadel)
+  # ==========================================
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v3.4.10
+    command: 'start-from-init --masterkey "12345678901234567890123456789012" --tlsMode disabled'
+    environment:
+      - ZITADEL_DATABASE_POSTGRES_HOST=zitadel-db
+      - ZITADEL_DATABASE_POSTGRES_PORT=5432
+      - ZITADEL_DATABASE_POSTGRES_DATABASE=zitadel
+      - ZITADEL_DATABASE_POSTGRES_USER_USERNAME=zitadel
+      - ZITADEL_DATABASE_POSTGRES_USER_PASSWORD=zitadel_app_password
+      - ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE=disable
+      - ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME=postgres
+      - ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD=postgres_admin_password
+      - ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE=disable
+      - ZITADEL_EXTERNALDOMAIN=localhost
+      - ZITADEL_EXTERNALPORT=8081
+      - ZITADEL_EXTERNALSECURE=false
+
+      # [NOWE] - Gwarantuje utworzenie konta admina przy czystym starcie bazy
+      - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME=zitadel-admin
+      - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD=Password123!
+    ports:
+      - "8081:8080"
+    networks:
+      - web_net
+      - internal_net
+    depends_on:
+      zitadel-db:
+        condition: service_healthy
+
+  # ==========================================
+  # 7. Baza Danych dla Zitadel
+  # ==========================================
+  zitadel-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_admin_password
+    volumes:
+      - zitadel_data:/var/lib/postgresql/data
+    networks:
+      - internal_net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ==========================================
+# Konfiguracja Sieci, Wolumenów i Sekretów
+# ==========================================
+networks:
+  web_net:
+  internal_net:
+
+volumes:
+  db_data:
+  zitadel_data:
+
+secrets:
+  db_password:
+    file: ./dbpassword.txt

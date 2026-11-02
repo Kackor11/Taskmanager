@@ -1,0 +1,30 @@
+name: Java CI/CD & Security Tests
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pobranie kodu repozytorium
+        uses: actions/checkout@v3
+
+      - name: Ustawienie Java 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Uruchomienie testów (MockMvc Security)
+        run: |
+          cd taskmanager
+          mvn -B test
+
+      - name: Weryfikacja budowania obrazu Docker (Backend)
+        run: |
+          cd taskmanager
+          docker build -t taskmanager-backend-test .

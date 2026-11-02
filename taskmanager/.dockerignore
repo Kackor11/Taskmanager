@@ -1,0 +1,10 @@
+target/
+*.jar
+.idea/
+*.iml
+.git/
+.gitignore
+dbpassword.txt
+task.json
+README.md
+CHECKLIST.md
